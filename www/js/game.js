@@ -1,328 +1,242 @@
-class Game {
-    constructor(canvas) {
-        this.canvas = canvas;
-        this.ctx = canvas.getContext('2d');
-        this.levelId = 1;
-        this.deaths = 0;
-        this.coinsCollected = 0;
-        this.startTime = 0;
-        this.running = false;
-        this.paused = false;
-        this.flipped = false;
-        this.flipTimer = 0;
-        this.flipDuration = 180;
-        
-        this.camera = new Camera();
-        this.player = null;
-        this.levelData = null;
-        this.collectibles = [];
-        
-        this.setupCanvas();
-        this.loadLevel(this.levelId);
-        this.loop = this.loop.bind(this);
-        this.loop();
-    }
-
-    setupCanvas() {
-        const rect = this.canvas.parentElement.getBoundingClientRect();
-        this.canvas.width = 800;
-        this.canvas.height = 400;
-        this.canvas.style.width = rect.width + 'px';
-        this.canvas.style.height = rect.height + 'px';
-    }
-
-    loadLevel(id) {
-        this.levelData = LevelGenerator.generate(id);
-        this.levelId = id;
-        this.deaths = 0;
-        this.coinsCollected = 0;
-        this.startTime = Date.now();
-        this.flipped = false;
-        this.flipTimer = 0;
-        this.collectibles = this.levelData.collectibles.map(c => ({...c, collected: false}));
-        const start = this.levelData.playerStart;
-        this.player = new Player(start.x, start.y);
-        this.running = true;
-        this.paused = false;
-        
-        const theme = this.levelData.theme;
-        document.getElementById('gameCanvas').style.background = theme.bg;
-        
-        document.getElementById('hud-level').innerText = `Lv. ${id}`;
-        document.getElementById('hud-deaths').innerText = `💀 0`;
-        document.getElementById('hud-coins').innerText = `🪙 0`;
-        document.getElementById('complete-overlay').classList.add('hidden');
-        
-        if(id % 5 === 0 && id > 1) AdManager.showInterstitial();
-    }
-
-    restartLevel() { this.loadLevel(this.levelId); }
-
-    nextLevel() {
-        if(this.levelId >= 500) {
-            alert('🏆 You completed all 500 levels! You are the TRUE TRAP MASTER!');
-            UIManager.showScreen('menu-screen');
-            return;
-        }
-        this.loadLevel(this.levelId + 1);
-        SaveManager.unlockLevel(this.levelId + 1);
-    }
-
-    loop() {
-        if(!this.running) { requestAnimationFrame(this.loop); return; }
-        const ctx = this.ctx;
-        // Always start each frame from a clean identity transform so we never
-        // accumulate translations across frames (this was the cause of the
-        // game visually drifting / breaking after a while).
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, 800, 400);
-        
-        if(!this.paused) this.update();
-        
-        this.camera.follow(this.player, 800, 400, this.levelData.width || 1200, this.levelData.height || 400);
-
-        ctx.save();
-        this.camera.apply(ctx);
-        
-        // Render with Flip support
-        if(this.flipped) {
-            ctx.save();
-            ctx.translate(400, 200);
-            ctx.rotate(Math.PI);
-            ctx.translate(-400, -200);
-        }
-        this.render(ctx);
-        if(this.flipped) {
-            ctx.restore();
-        }
-
-        ctx.restore(); // undo camera transform, back to identity for the HUD/next frame
-
-        document.getElementById('hud-deaths').innerHTML = `💀 ${this.deaths}`;
-        document.getElementById('hud-coins').innerHTML = `🪙 ${this.coinsCollected}`;
-        requestAnimationFrame(this.loop);
-    }
-
-    update() {
-        const input = InputManager.getState();
-        const player = this.player;
-        const data = this.levelData;
-
-        if(!player.alive) {
-            player.deathTimer--;
-            if(player.deathTimer <= 0) { this.deaths++; this.restartLevel(); return; }
-            return;
-        }
-
-        this.updateTraps();
-
-        // FLIP TRAP CHECK
-        for(let t of data.traps) {
-            if(t.type === 'flipTrigger' && t.active !== false && Physics.aabb(player, t)) {
-                this.flipped = true;
-                this.flipTimer = this.flipDuration;
-                t.active = false;
-                // Visually indicate flip
-            }
-        }
-        if(this.flipped) {
-            this.flipTimer--;
-            if(this.flipTimer <= 0) this.flipped = false;
-        }
-
-        // Controls
-        let moveX = 0;
-        if(input.left) moveX = -1;
-        if(input.right) moveX = 1;
-        if(this.flipped) moveX *= -1; // Invert controls
-        if(data.specials && data.specials.reverseControls) moveX *= -1;
-
-        if(moveX < 0) player.moveLeft();
-        else if(moveX > 0) player.moveRight();
-        if(input.jump) player.jump();
-
-        // Gravity
-        let grav = (data.specials && data.specials.gravity) ? data.specials.gravity : 0.5;
-        if(this.flipped) grav = -grav;
-        player.vy += grav;
-        player.x += player.vx;
-        player.y += player.vy;
-
-        let platforms = data.platforms;
-        const onGround = Physics.resolveCollisions(player, platforms);
-        player.onGround = onGround;
-
-        // Trap Collisions
-        for(let t of data.traps) {
-            if(t.type === 'flipTrigger' && t.active === false) continue;
-            if(Physics.aabb(player, t)) {
-                if(t.damage) { player.die(); }
-                if(t.type === 'flipTrigger' && t.active !== false) {
-                    this.flipped = true;
-                    this.flipTimer = this.flipDuration;
-                    t.active = false;
-                }
-            }
-        }
-
-        // Collectibles
-        for(let c of this.collectibles) {
-            if(!c.collected && Physics.aabb(player, c)) {
-                c.collected = true;
-                this.coinsCollected++;
-            }
-        }
-
-        // Goal
-        if(Physics.aabb(player, data.goal)) this.completeLevel();
-        if(player.y > 500 || player.y < -100) player.die();
-    }
-
-    updateTraps() {
-        // Moving traps carry speed/dir but nothing was ever advancing their
-        // position, so they used to sit frozen in place. Patrol/oscillate them.
-        for(let t of this.levelData.traps) {
-            switch(t.type) {
-                case 'crusher':
-                    t.y += t.speed * t.dir;
-                    if(t.y <= t.startY) { t.y = t.startY; t.dir = 1; }
-                    if(t.y >= t.endY) { t.y = t.endY; t.dir = -1; }
-                    break;
-                case 'angryBird':
-                case 'eagle':
-                case 'ufo':
-                    if(t.originX === undefined) t.originX = t.x;
-                    t.x += t.speed * t.dir;
-                    if(t.x > t.originX + 90) t.dir = -1;
-                    if(t.x < t.originX - 90) t.dir = 1;
-                    break;
-                case 'lion': case 'wolf': case 'bear': case 'tiger':
-                case 'snake': case 'shark': case 'rhino': case 'hippo': case 'croc':
-                    if(t.originX === undefined) t.originX = t.x;
-                    t.x += t.speed * t.dir;
-                    if(t.x > t.originX + 60) t.dir = -1;
-                    if(t.x < t.originX - 60) t.dir = 1;
-                    break;
-            }
-        }
-    }
-
     render(ctx) {
         const data = this.levelData;
-        // Background
-        ctx.fillStyle = this.flipped ? '#0a0a1a' : data.theme.bg;
-        ctx.fillRect(0, 0, 800, 400);
+        const theme = data.theme;
+        const W = 800, H = 400;
 
-        // Platforms
-        ctx.fillStyle = this.flipped ? '#4a4a5a' : '#4a6fa5';
+        // ===== থিম অনুযায়ী ব্যাকগ্রাউন্ড =====
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, theme.sky || theme.bg);
+        grad.addColorStop(0.7, theme.bg);
+        grad.addColorStop(1, theme.ground);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+
+        // ===== সূর্য / চাঁদ =====
+        if (theme.env.sun) {
+            ctx.fillStyle = '#ffdd44';
+            ctx.shadowColor = '#ffdd44';
+            ctx.shadowBlur = 80;
+            ctx.beginPath();
+            ctx.arc(700, 60, 45, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        if (theme.env.moon) {
+            ctx.fillStyle = '#e0e8f0';
+            ctx.shadowColor = '#e0e8f0';
+            ctx.shadowBlur = 60;
+            ctx.beginPath();
+            ctx.arc(100, 60, 30, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = '#1a1a2e';
+            ctx.shadowBlur = 0;
+            ctx.beginPath();
+            ctx.arc(90, 55, 8, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(110, 70, 5, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // ===== বৃষ্টি / তুষার =====
+        if (theme.env.rain) {
+            ctx.strokeStyle = 'rgba(150, 200, 255, 0.4)';
+            ctx.lineWidth = 1;
+            for(let i=0; i<80; i++) {
+                const x = (i * 37 + Date.now()*0.05) % W;
+                const y = (i * 53 + Date.now()*0.1) % H;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x-5, y+15);
+                ctx.stroke();
+            }
+        }
+        if (theme.env.snow) {
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            for(let i=0; i<40; i++) {
+                const x = (i * 67 + Date.now()*0.03) % W;
+                const y = (i * 43 + Date.now()*0.06) % H;
+                ctx.beginPath();
+                ctx.arc(x, y, 2+Math.sin(i)*1, 0, Math.PI*2);
+                ctx.fill();
+            }
+        }
+
+        // ===== সমুদ্রের ঢেউ =====
+        if (theme.env.waves) {
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.3)';
+            ctx.lineWidth = 4;
+            for(let i=0; i<3; i++) {
+                ctx.beginPath();
+                const yBase = H - 20 + i*10;
+                for(let x=0; x<W; x+=5) {
+                    const y = yBase + Math.sin(x*0.02 + Date.now()*0.001 + i*2) * 10;
+                    i===0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+        }
+
+        // ===== প্ল্যাটফর্ম =====
+        ctx.shadowBlur = 0;
         for(let p of data.platforms) {
             ctx.fillStyle = (p.isQuicksand) ? '#b8860b' : (this.flipped ? '#6a6a7a' : '#4a6fa5');
             ctx.fillRect(p.x, p.y, p.w, p.h);
+            // গ্রাউন্ড টেক্সচার
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            for(let i=0; i<p.w; i+=20) {
+                ctx.fillRect(p.x+i, p.y+4, 4, 3);
+            }
         }
 
-        // Traps
+        // ===== ট্র্যাপ রেন্ডার (থিম অনুযায়ী রঙ) =====
         for(let t of data.traps) {
             if(t.type === 'flipTrigger' && t.active === false) continue;
             
-            if(t.type === 'fakeFloor') {
-                ctx.fillStyle = this.flipped ? '#6a6a7a' : '#4a6fa5';
-                ctx.fillRect(t.x - 10, t.y - 15, t.w + 20, 20);
-            }
+            // ট্র্যাপের টাইপ অনুযায়ী ড্র
             if(t.type === 'spike') {
-                ctx.fillStyle = '#ff4444';
+                ctx.fillStyle = t.color || '#ff4444';
+                ctx.shadowColor = '#ff0000';
+                ctx.shadowBlur = 10;
                 ctx.beginPath();
                 ctx.moveTo(t.x, t.y + t.h);
                 ctx.lineTo(t.x + t.w/2, t.y);
                 ctx.lineTo(t.x + t.w, t.y + t.h);
                 ctx.fill();
+                ctx.shadowBlur = 0;
             }
-            if(t.type === 'crusher') {
-                ctx.fillStyle = '#8B0000';
+            else if(t.type === 'crusher') {
+                ctx.fillStyle = t.color || '#8B0000';
                 ctx.shadowColor = 'red';
                 ctx.shadowBlur = 20;
                 ctx.fillRect(t.x, t.y, t.w, t.h);
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(t.x, t.y, t.w, t.h);
                 ctx.shadowBlur = 0;
             }
-            if(t.type === 'flappyPipe') {
-                ctx.fillStyle = '#2a6a2a';
+            else if(t.type === 'flappyPipe') {
+                ctx.fillStyle = t.color || '#2a6a2a';
                 ctx.fillRect(t.x, t.y, t.w, t.h);
                 ctx.fillRect(t.x, t.y + t.h + t.gap, t.w, 80);
+                ctx.fillStyle = 'rgba(0,255,0,0.2)';
+                ctx.fillRect(t.x-5, t.y + t.h, t.w+10, t.gap);
             }
-            if(t.type === 'lion' || t.type === 'wolf' || t.type === 'bear' || t.type === 'tiger') {
-                ctx.fillStyle = '#d4a373';
+            else if(t.type === 'angryBird') {
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowColor = '#ff0000';
+                ctx.shadowBlur = 20;
                 ctx.beginPath();
-                ctx.arc(t.x + 15, t.y + 15, 15, 0, Math.PI*2);
+                ctx.arc(t.x+15, t.y+15, 15, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.shadowBlur = 0;
+                ctx.fillRect(t.x+10, t.y+10, 4, 4);
+                ctx.fillRect(t.x+20, t.y+10, 4, 4);
+                ctx.fillStyle = '#ffa500';
+                ctx.beginPath();
+                ctx.moveTo(t.x+15, t.y+20);
+                ctx.lineTo(t.x+10, t.y+25);
+                ctx.lineTo(t.x+20, t.y+25);
+                ctx.fill();
+            }
+            else if(t.type === 'lion' || t.type === 'wolf' || t.type === 'bear' || t.type === 'tiger') {
+                ctx.fillStyle = t.color || '#d4a373';
+                ctx.shadowColor = '#000';
+                ctx.shadowBlur = 10;
+                ctx.beginPath();
+                ctx.arc(t.x+15, t.y+15, 15, 0, Math.PI*2);
                 ctx.fill();
                 ctx.fillStyle = '#222';
+                ctx.shadowBlur = 0;
                 ctx.font = '20px sans-serif';
-                ctx.fillText('🐾', t.x, t.y+20);
+                const emoji = {lion:'🦁', wolf:'🐺', bear:'🐻', tiger:'🐯', shark:'🦈', croc:'🐊', eagle:'🦅', snake:'🐍', rhino:'🦏', hippo:'🦛', bat:'🦇', scorpion:'🦂', frog:'🐸', demon:'👿', ghost:'👻', robot:'🤖', alien:'👽', ufo:'🛸', crystal:'💎', neon:'💡', glitch:'🌀', snowball:'❄️', lightning:'⚡', rock:'🪨', cloud:'☁️'};
+                ctx.fillText(emoji[t.type] || '🐾', t.x, t.y+20);
             }
-            if(t.type === 'ufo') {
-                ctx.fillStyle = '#7a7a8a';
+            else if(t.type === 'ufo') {
+                ctx.fillStyle = t.color || '#7a7a8a';
                 ctx.shadowColor = '#0f0';
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = 20;
                 ctx.beginPath();
                 ctx.ellipse(t.x+20, t.y+10, 20, 10, 0, 0, Math.PI*2);
                 ctx.fill();
                 ctx.shadowBlur = 0;
                 ctx.fillStyle = '#fff';
                 ctx.fillRect(t.x+15, t.y, 10, 5);
+                ctx.fillStyle = '#0f0';
+                ctx.shadowColor = '#0f0';
+                ctx.shadowBlur = 10;
+                ctx.fillRect(t.x+18, t.y-3, 4, 3);
+                ctx.fillRect(t.x+28, t.y-3, 4, 3);
+                ctx.shadowBlur = 0;
             }
-            if(t.type === 'flipTrigger') {
+            else if(t.type === 'flipTrigger') {
                 ctx.fillStyle = '#ff00ff';
                 ctx.shadowColor = '#ff00ff';
-                ctx.shadowBlur = 25;
-                ctx.font = '20px sans-serif';
-                ctx.fillText('🌀', t.x, t.y+20);
+                ctx.shadowBlur = 30;
+                ctx.font = '30px sans-serif';
+                ctx.fillText('🌀', t.x, t.y+25);
                 ctx.shadowBlur = 0;
             }
-            if(t.type === 'lava') {
+            else if(t.type === 'lava') {
                 ctx.fillStyle = '#ff4500';
                 ctx.shadowColor = 'orange';
-                ctx.shadowBlur = 30;
+                ctx.shadowBlur = 40;
                 ctx.fillRect(t.x, t.y, t.w, t.h);
+                // লাভা বুদবুদ
+                for(let i=0; i<3; i++) {
+                    const bx = t.x + 10 + i*20 + Math.sin(Date.now()*0.002 + i)*5;
+                    const by = t.y - 5 + Math.sin(Date.now()*0.003 + i*2)*5;
+                    ctx.fillStyle = 'rgba(255,200,0,0.6)';
+                    ctx.beginPath();
+                    ctx.arc(bx, by, 4+Math.sin(Date.now()*0.01+i)*2, 0, Math.PI*2);
+                    ctx.fill();
+                }
                 ctx.shadowBlur = 0;
+            }
+            else if(t.type === 'laser') {
+                if(Math.floor(Date.now()/1000) % 2 === 0) {
+                    ctx.fillStyle = 'rgba(255,0,255,0.6)';
+                    ctx.shadowColor = '#ff00ff';
+                    ctx.shadowBlur = 30;
+                    ctx.fillRect(t.x, t.y, t.w, t.h);
+                    ctx.shadowBlur = 0;
+                }
+            }
+            else {
+                // ডিফল্ট ট্র্যাপ
+                ctx.fillStyle = t.color || '#ff4444';
+                ctx.fillRect(t.x, t.y, t.w, t.h);
             }
         }
 
-        // Goal
+        // ===== গোল (পতাকা) =====
         ctx.fillStyle = '#f5c842';
         ctx.shadowColor = 'gold';
-        ctx.shadowBlur = 20;
+        ctx.shadowBlur = 30;
         ctx.fillRect(data.goal.x, data.goal.y, data.goal.w, data.goal.h);
         ctx.shadowBlur = 0;
         ctx.fillStyle = '#333';
-        ctx.font = '20px sans-serif';
-        ctx.fillText('🏁', data.goal.x, data.goal.y + 25);
+        ctx.font = '25px sans-serif';
+        ctx.fillText('🏁', data.goal.x, data.goal.y + 28);
 
-        // Collectibles
+        // ===== কলেক্টিবল =====
         for(let c of this.collectibles) {
             if(!c.collected) {
+                const pulse = Math.sin(Date.now()*0.003 + c.x) * 0.3 + 0.7;
                 ctx.fillStyle = '#ffd700';
                 ctx.shadowColor = 'gold';
-                ctx.shadowBlur = 15;
+                ctx.shadowBlur = 20 * pulse;
                 ctx.beginPath();
-                ctx.arc(c.x + 10, c.y + 10, 10, 0, Math.PI*2);
+                ctx.arc(c.x + 10, c.y + 10, 10 * pulse, 0, Math.PI*2);
                 ctx.fill();
                 ctx.shadowBlur = 0;
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('★', c.x+6, c.y+14);
             }
         }
 
+        // ===== প্লেয়ার =====
         this.player.draw(ctx);
     }
-
-    completeLevel() {
-        if(!this.running) return;
-        this.running = false;
-        const time = Math.floor((Date.now() - this.startTime) / 1000);
-        SaveManager.completeLevel(this.levelId, time, this.deaths, this.coinsCollected);
-        document.getElementById('complete-stats').innerText = `Time: ${time}s | Deaths: ${this.deaths} | Coins: ${this.coinsCollected}`;
-        document.getElementById('complete-overlay').classList.remove('hidden');
-        AudioManager.play('victory');
-    }
-
-    togglePause() {
-        this.paused = !this.paused;
-        document.getElementById('pause-overlay').classList.toggle('hidden');
-    }
-}
