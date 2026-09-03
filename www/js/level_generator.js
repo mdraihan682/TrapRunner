@@ -15,7 +15,7 @@ class LevelGenerator {
         // ===== 🚀 নতুন ডিফিকাল্টি স্কেল (Level 1 থেকেই কঠিন) =====
         // Level 1 → 0.5, Level 250 → 1.0, Level 500 → 1.5
         const difficulty = Math.min(1.6, 0.5 + (levelId / 500) * 1.0);
-        
+     
         const width = 1200, height = 400;
         let platforms = [], traps = [], collectibles = [];
         let specials = { theme: theme.id };
