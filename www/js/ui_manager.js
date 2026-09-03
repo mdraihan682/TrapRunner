@@ -1,39 +1,109 @@
 class UIManager {
     static init(game) {
         this.game = game;
-        document.querySelectorAll('[data-action="play"]').forEach(el => el.addEventListener('click', () => {
-            this.showScreen('game-screen');
-            if(game) game.loadLevel(SaveManager.get().unlockedLevel || 1);
-        }));
-        document.querySelectorAll('[data-action="levels"]').forEach(el => el.addEventListener('click', this.showLevelSelect.bind(this)));
-        document.querySelectorAll('[data-action="shop"]').forEach(el => el.addEventListener('click', this.showShop.bind(this)));
-        document.querySelectorAll('[data-action="achievements"]').forEach(el => el.addEventListener('click', this.showAchievements.bind(this)));
-        document.querySelectorAll('[data-action="settings"]').forEach(el => el.addEventListener('click', () => this.showScreen('settings-screen')));
-        document.querySelectorAll('[data-action="howto"]').forEach(el => el.addEventListener('click', () => this.showScreen('howto-screen')));
-        document.querySelectorAll('[data-action="removeads"]').forEach(el => el.addEventListener('click', PurchaseManager.purchaseRemoveAds));
-        document.querySelectorAll('[data-action="backMenu"]').forEach(el => el.addEventListener('click', () => this.showScreen('menu-screen')));
-        document.querySelectorAll('[data-action="resume"]').forEach(el => el.addEventListener('click', () => { if(game) game.togglePause(); }));
-        document.querySelectorAll('[data-action="restart"]').forEach(el => el.addEventListener('click', () => { if(game) { game.restartLevel(); document.getElementById('pause-overlay').classList.add('hidden'); } }));
-        document.querySelectorAll('[data-action="levelSelect"]').forEach(el => el.addEventListener('click', () => { this.showScreen('level-screen'); if(game) game.running = false; }));
-        document.querySelectorAll('[data-action="menu"]').forEach(el => el.addEventListener('click', () => { this.showScreen('menu-screen'); if(game) game.running = false; }));
-        document.querySelectorAll('[data-action="nextLevel"]').forEach(el => el.addEventListener('click', () => { if(game) game.nextLevel(); }));
-        document.querySelectorAll('[data-action="replayLevel"]').forEach(el => el.addEventListener('click', () => { if(game) { game.restartLevel(); document.getElementById('complete-overlay').classList.add('hidden'); } }));
-        document.getElementById('pause-btn').addEventListener('click', () => { if(game) game.togglePause(); });
-        
+        this.setupEventListeners();
+        this.loadSettings();
+    }
+
+    static setupEventListeners() {
+        // ===== ম্যাজিক ফিক্স: ডকুমেন্টে একক লিসেনার =====
+        document.addEventListener('click', (e) => {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            
+            const action = target.dataset.action;
+            console.log('Button clicked:', action); // ডিবাগের জন্য
+
+            switch(action) {
+                case 'play':
+                    this.showScreen('game-screen');
+                    if (this.game) {
+                        const level = SaveManager.get().unlockedLevel || 1;
+                        this.game.loadLevel(level);
+                    }
+                    break;
+                case 'levels':
+                    this.showLevelSelect();
+                    break;
+                case 'shop':
+                    this.showShop();
+                    break;
+                case 'achievements':
+                    this.showAchievements();
+                    break;
+                case 'settings':
+                    this.showScreen('settings-screen');
+                    break;
+                case 'howto':
+                    this.showScreen('howto-screen');
+                    break;
+                case 'removeads':
+                    PurchaseManager.purchaseRemoveAds();
+                    break;
+                case 'backMenu':
+                    this.showScreen('menu-screen');
+                    break;
+                case 'resume':
+                    if (this.game) this.game.togglePause();
+                    break;
+                case 'restart':
+                    if (this.game) {
+                        this.game.restartLevel();
+                        document.getElementById('pause-overlay').classList.add('hidden');
+                    }
+                    break;
+                case 'levelSelect':
+                    this.showScreen('level-screen');
+                    if (this.game) this.game.running = false;
+                    break;
+                case 'menu':
+                    this.showScreen('menu-screen');
+                    if (this.game) this.game.running = false;
+                    break;
+                case 'nextLevel':
+                    if (this.game) this.game.nextLevel();
+                    break;
+                case 'replayLevel':
+                    if (this.game) {
+                        this.game.restartLevel();
+                        document.getElementById('complete-overlay').classList.add('hidden');
+                    }
+                    break;
+                default:
+                    console.warn('Unknown action:', action);
+            }
+        });
+
+        // পজ বাটন আলাদাভাবে
+        document.getElementById('pause-btn').addEventListener('click', () => {
+            if (this.game) this.game.togglePause();
+        });
+
+        // সেটিংস টগল
         document.getElementById('toggle-sound').addEventListener('change', (e) => {
-            const s = SaveManager.get(); s.settings.sound = e.target.checked; SaveManager.save(s);
+            const s = SaveManager.get();
+            s.settings.sound = e.target.checked;
+            SaveManager.save(s);
         });
         document.getElementById('toggle-vibration').addEventListener('change', (e) => {
-            const s = SaveManager.get(); s.settings.vibration = e.target.checked; SaveManager.save(s);
+            const s = SaveManager.get();
+            s.settings.vibration = e.target.checked;
+            SaveManager.save(s);
         });
+    }
+
+    static loadSettings() {
         const s = SaveManager.get();
-        document.getElementById('toggle-sound').checked = s.settings.sound;
-        document.getElementById('toggle-vibration').checked = s.settings.vibration;
+        const soundToggle = document.getElementById('toggle-sound');
+        const vibToggle = document.getElementById('toggle-vibration');
+        if (soundToggle) soundToggle.checked = s.settings.sound;
+        if (vibToggle) vibToggle.checked = s.settings.vibration;
     }
 
     static showScreen(id) {
         document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-        document.getElementById(id).classList.add('active');
+        const target = document.getElementById(id);
+        if (target) target.classList.add('active');
     }
 
     static showLevelSelect() {
@@ -41,18 +111,21 @@ class UIManager {
         const grid = document.getElementById('level-grid');
         grid.innerHTML = '';
         const save = SaveManager.get();
-        for(let i = 1; i <= 500; i++) {
+        for (let i = 1; i <= 500; i++) {
             const btn = document.createElement('button');
             btn.className = 'level-btn';
             btn.innerText = i;
-            if(save.completedLevels.includes(i)) btn.classList.add('completed');
-            else if(i <= save.unlockedLevel) btn.classList.add('unlocked');
+            btn.dataset.action = 'levelSelectBtn';
+            if (save.completedLevels.includes(i)) btn.classList.add('completed');
+            else if (i <= save.unlockedLevel) btn.classList.add('unlocked');
             else btn.classList.add('locked');
-            if(i === save.unlockedLevel) btn.classList.add('current');
-            btn.addEventListener('click', () => {
-                if(i <= save.unlockedLevel) {
+            if (i === save.unlockedLevel) btn.classList.add('current');
+            
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (i <= save.unlockedLevel) {
                     this.showScreen('game-screen');
-                    if(this.game) this.game.loadLevel(i);
+                    if (this.game) this.game.loadLevel(i);
                 }
             });
             grid.appendChild(btn);
@@ -64,7 +137,7 @@ class UIManager {
         const grid = document.getElementById('shop-grid');
         grid.innerHTML = '';
         const save = SaveManager.get();
-        if(!save.ownedCosmetics) save.ownedCosmetics = [];
+        if (!save.ownedCosmetics) save.ownedCosmetics = [];
 
         const categories = ShopManager.getCategories();
         const categoryNames = {
@@ -74,22 +147,23 @@ class UIManager {
             emotes: '💬 Emotes'
         };
 
-        for(let [catKey, items] of Object.entries(categories)) {
+        for (let [catKey, items] of Object.entries(categories)) {
             const header = document.createElement('div');
             header.style.cssText = 'width:100%; text-align:center; font-size:1.3rem; color:#f5c842; margin-top:10px; border-bottom:1px solid #444; padding:5px 0;';
             header.innerText = categoryNames[catKey] || catKey;
             grid.appendChild(header);
 
-            for(let item of items) {
+            for (let item of items) {
                 const div = document.createElement('div');
                 div.className = 'shop-item';
                 const owned = save.ownedCosmetics.includes(item.id);
-                if(owned) div.classList.add('owned');
+                if (owned) div.classList.add('owned');
 
                 div.innerHTML = `<div style="font-size:2rem;">${item.emoji}</div><h3>${item.name}</h3><p style="color:#4CAF50;">$${item.priceUsd.toFixed(2)}</p>`;
-                if(!owned) {
+                if (!owned) {
                     const btn = document.createElement('button');
                     btn.innerText = 'BUY';
+                    btn.dataset.action = 'shopBuy';
                     btn.style.minWidth = '60px';
                     btn.style.padding = '5px 10px';
                     btn.addEventListener('click', (e) => {
@@ -104,7 +178,7 @@ class UIManager {
             }
         }
 
-        // Remove Ads
+        // রিমুভ অ্যাডস
         const adsDiv = document.createElement('div');
         adsDiv.style.cssText = 'width:100%; text-align:center; margin:15px; padding:15px; background:#2a1a2a; border-radius:15px;';
         adsDiv.innerHTML = `<h2 style="color:#e94560;">🚫 REMOVE ADS</h2><p style="color:#aaa;">$0.99 One-time</p><button id="remove-ads-shop-btn" style="background:#e94560;">BUY</button>`;
@@ -118,10 +192,10 @@ class UIManager {
         grid.innerHTML = '';
         const save = SaveManager.get();
         const unlocked = AchievementManager.checkAll(save);
-        for(let ach of AchievementManager.list) {
+        for (let ach of AchievementManager.list) {
             const div = document.createElement('div');
             div.className = 'achieve-item';
-            if(unlocked.includes(ach.id)) div.classList.add('unlocked');
+            if (unlocked.includes(ach.id)) div.classList.add('unlocked');
             div.innerHTML = `<h4>${ach.name}</h4><p>${ach.desc}</p><p>${unlocked.includes(ach.id) ? '✅' : '🔒'}</p>`;
             grid.appendChild(div);
         }
