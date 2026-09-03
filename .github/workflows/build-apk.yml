@@ -25,6 +25,12 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install compatible Gradle version
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip -P /tmp
+          unzip -q /tmp/gradle-8.9-bin.zip -d /opt
+          echo "/opt/gradle-8.9/bin" >> $GITHUB_PATH
+
       - name: Install Cordova
         run: npm install -g cordova
 
