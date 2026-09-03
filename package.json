@@ -1,0 +1,26 @@
+{
+  "name": "fatrunner",
+  "displayName": "Fat Runner Trap World",
+  "version": "1.0.0",
+  "description": "500-level trap platformer with 25 unique themes.",
+  "main": "index.js",
+  "scripts": {
+    "build": "cordova build android",
+    "release": "cordova build android --release"
+  },
+  "dependencies": {
+    "cordova-android": "^12.0.1",
+    "cordova-plugin-admob-free": "^0.27.0",
+    "cordova-plugin-inapppurchase": "^1.2.0"
+  },
+  "devDependencies": {},
+  "cordova": {
+    "platforms": [
+      "android"
+    ],
+    "plugins": {
+      "cordova-plugin-admob-free": {},
+      "cordova-plugin-inapppurchase": {}
+    }
+  }
+}

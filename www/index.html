@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Content-Security-Policy" content="default-src *; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+    <title>Fat Runner: Trap World</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+    <div id="app">
+        <div id="menu-screen" class="screen active">
+            <h1>🍔 FAT RUNNER</h1>
+            <h2 style="color:#f5c842;">Trap World</h2>
+            <button data-action="play">PLAY</button>
+            <button data-action="levels">LEVELS</button>
+            <button data-action="shop">SHOP</button>
+            <button data-action="achievements">ACHIEVEMENTS</button>
+            <button data-action="settings">SETTINGS</button>
+            <button data-action="howto">HOW TO PLAY</button>
+            <button data-action="removeads">🚫 REMOVE ADS</button>
+            <div class="version">v1.0 - 500 Levels</div>
+        </div>
+        <div id="level-screen" class="screen">
+            <h2>🗺️ WORLDS & LEVELS</h2>
+            <div id="level-grid"></div>
+            <button data-action="backMenu">BACK</button>
+        </div>
+        <div id="game-screen" class="screen">
+            <canvas id="gameCanvas"></canvas>
+            <div id="game-ui">
+                <div id="hud">
+                    <span id="hud-level">Lv. 1</span>
+                    <span id="hud-deaths">💀 0</span>
+                    <span id="hud-coins">🪙 0</span>
+                </div>
+                <div id="pause-btn">⏸</div>
+                <div id="controls">
+                    <div id="left-btn">◀</div>
+                    <div id="right-btn">▶</div>
+                    <div id="jump-btn">▲</div>
+                </div>
+            </div>
+        </div>
+        <div id="pause-overlay" class="overlay hidden">
+            <h2>⏸ PAUSED</h2>
+            <button data-action="resume">RESUME</button>
+            <button data-action="restart">RESTART</button>
+            <button data-action="levelSelect">LEVEL SELECT</button>
+            <button data-action="menu">MAIN MENU</button>
+        </div>
+        <div id="complete-overlay" class="overlay hidden">
+            <h2>⭐ LEVEL COMPLETE!</h2>
+            <p id="complete-stats">Time: 0s | Deaths: 0</p>
+            <button data-action="nextLevel">NEXT LEVEL</button>
+            <button data-action="replayLevel">REPLAY</button>
+            <button data-action="levelSelect">LEVEL SELECT</button>
+        </div>
+        <div id="shop-screen" class="screen">
+            <h2>🛍️ SHOP</h2>
+            <div id="shop-grid"></div>
+            <button data-action="backMenu">BACK</button>
+        </div>
+        <div id="achieve-screen" class="screen">
+            <h2>🏅 ACHIEVEMENTS</h2>
+            <div id="achieve-grid"></div>
+            <button data-action="backMenu">BACK</button>
+        </div>
+        <div id="settings-screen" class="screen">
+            <h2>⚙️ SETTINGS</h2>
+            <label><input type="checkbox" id="toggle-sound"> Sound</label>
+            <label><input type="checkbox" id="toggle-vibration"> Vibration</label>
+            <button data-action="backMenu">BACK</button>
+        </div>
+        <div id="howto-screen" class="screen">
+            <h2>📖 HOW TO PLAY</h2>
+            <p>Run, Jump, and reach the flag!</p>
+            <p>Watch out for 🧨 traps, 🦁 animals, 👽 UFOs!</p>
+            <p>⛔ Avoid the FLIP trap - it turns everything upside down!</p>
+            <button data-action="backMenu">BACK</button>
+        </div>
+    </div>
+    <script src="js/level_validator.js"></script>
+    <script src="js/theme_manager.js"></script>
+    <script src="js/trap_factory.js"></script>
+    <script src="js/level_generator.js"></script>
+    <script src="js/save_manager.js"></script>
+    <script src="js/achievements.js"></script>
+    <script src="js/shop.js"></script>
+    <script src="js/audio_manager.js"></script>
+    <script src="js/ad_manager.js"></script>
+    <script src="js/purchase_manager.js"></script>
+    <script src="js/security.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/ui_manager.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
